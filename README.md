@@ -9,6 +9,10 @@ This iOS app allows users to:
 2. Upload the image to a Hugging Face API endpoint.
 3. Receive and display predictions from a deep learning model hosted on Hugging Face.
 
+<p align="center">
+  <img src="https://github.com/qasimkhan/Bear-Classifier-App/blob/7f96a5da8e158ea928d9fda36cc8182ce15d91db/bear_classifier_view.jpeg" width="200">
+</p>
+
 ### API Details
 - **Hugging Face Space**: [Bear Classifier](https://huggingface.co/spaces/qasimkhan001/bear_classifier)
 - **Upload Endpoint**: `/upload`

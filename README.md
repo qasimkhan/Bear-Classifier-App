@@ -40,7 +40,7 @@ This iOS app allows users to:
 ### Steps to Run the Project
 1. Clone this repository to your local machine:
    ```bash
-   git clone https://github.com/qasimkhan/Practical-Deep-Learning-for-Coders.git
+   git clone https://github.com/qasimkhan/Bear-Classifier-App.git
    ```
 2. Open the project in Xcode.
 3. Connect your iOS device or use the simulator.
@@ -62,6 +62,8 @@ This iOS app allows users to:
 - **Parameters**:
   - `files`: The image file to upload.
 
+Making a prediction and getting a result requires 2 requests: a POST and a GET request. The POST request returns an EVENT_ID, which is used in the second GET request to fetch the results. In these snippets, we've used awk and read to parse the results, combining these two requests into one command for ease of use.
+
 ### Predict Request
 - **Endpoint**: `/gradio_api/call/predict`
 - **Method**: `POST`
@@ -74,6 +76,17 @@ This iOS app allows users to:
       ]
   }
   ```
+- **Response**:
+  ```json
+  {
+      "event_id": "..."
+  }
+  ```
+  
+### Predict Request
+- **Endpoint**: `/gradio_api/call/predict/{EVENT_ID}`
+- **Method**: `GET`
+- **Content-Type**: `application/json`
 
 ## Debugging and Logging
 Logs are included for both the upload and predict requests to aid debugging. Errors and responses are displayed in the app interface for clarity.

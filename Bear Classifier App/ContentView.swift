@@ -6,88 +6,62 @@
 //
 
 import SwiftUI
-import PhotosUI
+import UIKit
 
 struct ContentView: View {
-    @State private var selectedImage: UIImage?
-    @State private var output: String = ""
-    @State private var isShowingImagePicker = false
-    @State private var isUploading = false
+    @State private var selectedImage: UIImage? = nil
+    @State private var isImagePickerPresented = false
+    @State private var predictionResult: String = ""
+    @State private var isLoading = false
 
     var body: some View {
-        VStack(spacing: 20) {
-            VStack {
-                Text("Bear Classifier")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                Text("Practical Deep Learning for Coders")
-                    .font(.headline)
-                    .foregroundColor(.gray)
-            }
+        VStack {
+            Text("Bear Classifier")
+                .font(.largeTitle)
+                .padding()
 
-            Spacer()
+            Text("Practical Deep Learning for Coders")
+                .font(.subheadline)
+                .padding(.bottom)
 
-            if let image = selectedImage {
-                Image(uiImage: image)
+            if let selectedImage = selectedImage {
+                Image(uiImage: selectedImage)
                     .resizable()
                     .scaledToFit()
-                    .frame(height: 200)
-                    .cornerRadius(10)
-                    .shadow(radius: 5)
+                    .frame(height: 300)
+                    .padding()
             } else {
-                Text("No Image Selected")
-                    .foregroundColor(.gray)
+                Rectangle()
+                    .fill(Color.gray.opacity(0.5))
+                    .frame(height: 300)
+                    .overlay(Text("Select an Image"))
                     .padding()
-                    .frame(height: 200)
-                    .frame(maxWidth: .infinity)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(10)
-                    .shadow(radius: 5)
             }
 
-            Button(action: {
-                isShowingImagePicker = true
-            }) {
-                Text("Choose Image")
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
+            Button("Upload Image") {
+                isImagePickerPresented = true
+            }
+            .padding()
+            .sheet(isPresented: $isImagePickerPresented) {
+                ImagePicker(image: $selectedImage)
+            }
+
+            if isLoading {
+                ProgressView("Processing...")
                     .padding()
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
             }
 
-            Button(action: {
-                if let image = selectedImage {
-                    uploadFile(image)
-                }
-            }) {
-                if isUploading {
-                    ProgressView()
-                } else {
-                    Text("Upload and Predict")
-                        .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(selectedImage == nil ? Color.gray : Color.green)
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
+            Button("Classify Image") {
+                if let selectedImage = selectedImage {
+                    classifyImage(image: selectedImage)
                 }
             }
-            .disabled(selectedImage == nil || isUploading)
+            .disabled(selectedImage == nil || isLoading)
+            .padding()
 
-            if !output.isEmpty {
-                ScrollView {
-                    Text("API Response:")
-                        .font(.headline)
-                    Text(output)
-                        .font(.body)
-                        .foregroundColor(.blue)
-                        .padding()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(10)
-                }
+            if !predictionResult.isEmpty {
+                Text("Result: \(predictionResult)")
+                    .padding()
             }
 
             Spacer()
@@ -95,161 +69,154 @@ struct ContentView: View {
             HStack {
                 Link("API", destination: URL(string: "https://qasimkhan001-bear-classifier.hf.space/gradio_api/call/predict")!)
                 Spacer()
-                Link("Read more", destination: URL(string: "https://github.com/qasimkhan/Practical-Deep-Learning-for-Coders/")!)
+                Link("Read More", destination: URL(string: "https://github.com/qasimkhan/Practical-Deep-Learning-for-Coders/")!)
             }
-            .font(.footnote)
-            .padding(.top, 10)
+            .padding()
         }
         .padding()
-        .sheet(isPresented: $isShowingImagePicker) {
-            ImagePicker(selectedImage: $selectedImage)
+    }
+
+    func classifyImage(image: UIImage) {
+        isLoading = true
+        uploadImage(image: image) { result in
+            switch result {
+            case .success(let uploadResponse):
+                if let path = uploadResponse["path"] as? String {
+                    predictImage(path: path) { predictResult in
+                        DispatchQueue.main.async {
+                            switch predictResult {
+                            case .success(let prediction):
+                                predictionResult = prediction
+                            case .failure(let error):
+                                predictionResult = "Error: \(error.localizedDescription)"
+                            }
+                            isLoading = false
+                        }
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        predictionResult = "Error: Invalid upload response"
+                        isLoading = false
+                    }
+                }
+            case .failure(let error):
+                DispatchQueue.main.async {
+                    predictionResult = "Error: \(error.localizedDescription)"
+                    isLoading = false
+                }
+            }
         }
     }
 
-    func uploadFile(_ image: UIImage) {
-        guard let url = URL(string: "https://qasimkhan001-bear-classifier.hf.space/gradio_api/upload"),
-              let imageData = image.jpegData(compressionQuality: 0.8) else {
-            output = "Failed to process image."
-            return
-        }
+    func uploadImage(image: UIImage, completion: @escaping (Result<[String: Any], Error>) -> Void) {
+        let uploadURL = URL(string: "https://qasimkhan001-bear-classifier.hf.space/gradio_api/upload")!
+        var request = URLRequest(url: uploadURL)
+        request.httpMethod = "POST"
 
         let boundary = UUID().uuidString
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
         var body = Data()
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"files\"; filename=\"uploaded_image.jpg\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
-        body.append(imageData)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        if let imageData = image.jpegData(compressionQuality: 0.8) {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"files\"; filename=\"image.jpg\"\r\n".data(using: .utf8)!)
+            body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+            body.append(imageData)
+            body.append("\r\n".data(using: .utf8)!)
+            body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        }
 
         request.httpBody = body
 
-        isUploading = true
-
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            DispatchQueue.main.async {
-                isUploading = false
-            }
-
-            if let error = error {
-                DispatchQueue.main.async {
-                    output = "Upload error: \(error.localizedDescription)"
-                }
-                print("Upload error: \(error.localizedDescription)")
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+            guard let data = data, error == nil else {
+                completion(.failure(error ?? NSError(domain: "Unknown Error", code: -1, userInfo: nil)))
                 return
             }
 
-            if let data = data {
-                do {
-                    if let json = try JSONSerialization.jsonObject(with: data, options: [.allowFragments]) as? [String: Any],
-                       let path = json["path"] as? String {
-                        print("Upload Response: \(json)")
-                        // Use the path to call the predict API
-                        predictImage(path: path)
-                    } else {
-                        DispatchQueue.main.async {
-                            output = "Failed to parse upload response."
-                        }
-                        print("Upload response parsing failed. \(data)")
-                    }
-                } catch {
-                    DispatchQueue.main.async {
-                        output = "Failed to decode upload response: \(error.localizedDescription)"
-                    }
-                    print("Decoding upload response error: \(error.localizedDescription)")
+            do {
+                if let jsonArray = try JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]],
+                   let firstItem = jsonArray.first {
+                    completion(.success(firstItem))
+                } else {
+                    completion(.failure(NSError(domain: "Invalid response format", code: -1, userInfo: nil)))
                 }
+            } catch {
+                completion(.failure(error))
             }
-        }.resume()
-    }
-
-    
-    func predictImage(path: String) {
-        guard let url = URL(string: "https://qasimkhan001-bear-classifier.hf.space/gradio_api/call/predict") else {
-            output = "Invalid predict API URL."
-            return
         }
 
-        var request = URLRequest(url: url)
+        task.resume()
+    }
+
+    func predictImage(path: String, completion: @escaping (Result<String, Error>) -> Void) {
+        let predictURL = URL(string: "https://qasimkhan001-bear-classifier.hf.space/gradio_api/call/predict")!
+        var request = URLRequest(url: predictURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let requestBody: [String: Any] = [
-            "data": [["path": path]]
-        ]
-        request.httpBody = try? JSONSerialization.data(withJSONObject: requestBody, options: [])
+        let body: [String: Any] = ["data": [["path": path]]]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body, options: [])
 
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                DispatchQueue.main.async {
-                    output = "Predict error: \(error.localizedDescription)"
-                }
-                print("Predict error: \(error.localizedDescription)")
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+            guard let data = data, error == nil else {
+                completion(.failure(error ?? NSError(domain: "Unknown Error", code: -1, userInfo: nil)))
                 return
             }
 
-            if let data = data {
-                do {
-                    if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
-                        print("Predict Response: \(json)")
-                        DispatchQueue.main.async {
-                            let prettyResponse = json.prettyPrintedJSONString ?? "Unable to parse predict response."
-                            output = prettyResponse
-                        }
-                    }
-                } catch {
-                    DispatchQueue.main.async {
-                        output = "Failed to decode predict response: \(error.localizedDescription)"
-                    }
-                    print("Decoding predict response error: \(error.localizedDescription)")
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+                   let predictions = json["data"] as? [[String: Any]],
+                   let label = predictions.first?["label"] as? String {
+                    completion(.success(label))
+                } else {
+                    completion(.failure(NSError(domain: "Invalid response format", code: -1, userInfo: nil)))
                 }
+            } catch {
+                completion(.failure(error))
             }
-        }.resume()
+        }
+
+        task.resume()
     }
 }
 
 struct ImagePicker: UIViewControllerRepresentable {
-    @Binding var selectedImage: UIImage?
+    @Binding var image: UIImage?
 
-    func makeUIViewController(context: Context) -> PHPickerViewController {
-        var config = PHPickerConfiguration()
-        config.filter = .images
-        let picker = PHPickerViewController(configuration: config)
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
         picker.delegate = context.coordinator
+        picker.sourceType = .photoLibrary
         return picker
     }
 
-    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
 
-    class Coordinator: NSObject, PHPickerViewControllerDelegate {
+    class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
         let parent: ImagePicker
 
         init(_ parent: ImagePicker) {
             self.parent = parent
         }
 
-        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-            picker.dismiss(animated: true)
-            guard let provider = results.first?.itemProvider, provider.canLoadObject(ofClass: UIImage.self) else { return }
-
-            provider.loadObject(ofClass: UIImage.self) { image, _ in
-                DispatchQueue.main.async {
-                    self.parent.selectedImage = image as? UIImage
-                }
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let uiImage = info[.originalImage] as? UIImage {
+                parent.image = uiImage
             }
+            picker.dismiss(animated: true)
         }
     }
 }
 
-extension Dictionary {
-    var prettyPrintedJSONString: String? {
-        guard let data = try? JSONSerialization.data(withJSONObject: self, options: .prettyPrinted) else { return nil }
-        return String(data: data, encoding: .utf8)
+extension Data {
+    mutating func append(_ string: String) {
+        if let data = string.data(using: .utf8) {
+            append(data)
+        }
     }
 }

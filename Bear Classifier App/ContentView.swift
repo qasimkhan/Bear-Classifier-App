@@ -93,7 +93,7 @@ struct ContentView: View {
             Spacer()
 
             HStack {
-                Link("API", destination: URL(string: "https://qasimkhan001-bear-classifier.hf.space/gradio_api/call/predict")!)
+                Link("API", destination: URL(string: "https://huggingface.co/spaces/qasimkhan001/bear_classifier")!)
                 Spacer()
                 Link("Read more", destination: URL(string: "https://github.com/qasimkhan/Bear-Classifier-App")!)
             }
